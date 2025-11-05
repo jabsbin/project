@@ -11,12 +11,12 @@ import requests
 import pymysql
 
 # ========= 1) 설정 =========
-SERVICE_KEY = "RKqzhkFffQBQois3%2F3fNLq6CvB7O3BwmNxzFxoVJV8B%2FhgWdf2pXePTFxkNL420DzGOa42homOIiyKoOI3wWZw%3D%3D"
+SERVICE_KEY = "uBw4pl4zonRvmozNH0GjLBstsC%2FzUCuvHm2mAumchGMBa9nv%2BMHC7vMfNA%2FjJDF63unD98SzgfuJ81c4%2FbM5iQ%3D%3D"
 BASE = "http://apis.data.go.kr/B552061/frequentzoneBicycle/getRestFrequentzoneBicycle"
 ROWS = 100
 
 # 적재 연도들(예: 2021만 먼저 테스트 후 range로 확장)
-YEARS = [2021]
+YEARS = [2017]
 # 전국 시도 코드(표준 17개)
 SIDO_ALL = [11, 26, 27, 28, 29, 30, 31, 36, 41, 42, 43, 44, 45, 46, 47, 48, 50]
 

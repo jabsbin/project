@@ -19,9 +19,13 @@ public class HotspotController {
     @GetMapping
     public ResponseEntity<?> getHotspots(
             @RequestParam("bbox") String bbox,
-            @RequestParam(value = "year", required = false) Integer year,   // ✅ 선택 사항
+            @RequestParam(value = "year", required = false) Integer year,
             @RequestParam(value = "order", defaultValue = "accidents") String order,
-            @RequestParam(value = "limit", defaultValue = "200") Integer limit
+            @RequestParam(value = "limit", defaultValue = "20") Integer limit,
+            @RequestParam(value = "page", defaultValue = "0") Integer page,
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "lat", required = false) Double lat,
+            @RequestParam(value = "lng", required = false) Double lng
     ) {
         try {
             String[] p = bbox.split(",");
@@ -35,14 +39,25 @@ public class HotspotController {
             double south = Double.parseDouble(p[1].trim());
             double east  = Double.parseDouble(p[2].trim());
             double north = Double.parseDouble(p[3].trim());
+
             if (west > east || south > north) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "bad_request",
-                        "message", "bbox 값이 올바르지 않습니다. (west<=east, south<=north)"
+                        "message", "bbox 값이 올바르지 않습니다."
                 ));
             }
 
-            HotspotListDto dto = service.searchInBBox(west, south, east, north, year, order, limit);
+            if ("distance".equalsIgnoreCase(order) && (lat == null || lng == null)) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "bad_request",
+                        "message", "order=distance 사용 시 lat,lng 파라미터가 필요합니다."
+                ));
+            }
+
+            HotspotListDto dto = service.searchInBBox(
+                    west, south, east, north,
+                    year, order, limit, page, q, lat, lng
+            );
             return ResponseEntity.ok(dto);
 
         } catch (NumberFormatException nfe) {

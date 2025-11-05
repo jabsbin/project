@@ -7,7 +7,6 @@ public class HotspotListDto {
     public List<HotspotItemDto> items;
 
     public HotspotListDto(long total, List<HotspotItemDto> items) {
-        this.total = total;
-        this.items = items;
+        this.total = total; this.items = items;
     }
 }
