@@ -11,6 +11,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -25,14 +26,35 @@ public class RouteController {
 
     @GetMapping
     public ResponseEntity<?> route(
-            @RequestParam("origin") String origin,
-            @RequestParam("dest") String dest,
-            @RequestParam(value = "via", required = false) String via
+            @RequestParam("origin") String origin,           // "lat,lng" 또는 한글 주소
+            @RequestParam("dest") String dest,               // "lat,lng" 또는 한글 주소
+            @RequestParam(value = "via", required = false) String via,    // (단일 경유지, 선택)
+            @RequestParam(value = "vias", required = false) String vias    // (우회용 다중 경유지 JSON, 선택)
     ) {
         try {
-            // 1) 원점/도착점이 위도,경도 형태인지 확인 → 아니면 지오코드 호출
+            // 1) 좌표/주소 처리 → Kakao가 요구하는 "x,y(=lng,lat)" 문자열로 변환
             String originXY = toXY(origin);
             String destXY   = toXY(dest);
+
+            // 2) 경유지 구성: (a) 단일 via → 1개, (b) 다중 vias(JSON) → N개
+            List<String> waypointList = new ArrayList<>();
+            if (via != null && !via.isBlank()) {
+                waypointList.add(latlngToXY(via)); // "lat,lng" → "lng,lat"
+            }
+            if (vias != null && !vias.isBlank()) {
+                // URL 쿼리로 넘어온 JSON 문자열(vias)을 파싱
+                // (프론트에서 encodeURIComponent로 보내도 Spring이 자동 디코딩해줍니다)
+                JsonNode root = om.readTree(vias);
+                if (root.isArray()) {
+                    for (JsonNode n : root) {
+                        double lat = n.path("lat").asDouble(Double.NaN);
+                        double lng = n.path("lng").asDouble(Double.NaN);
+                        if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
+                            waypointList.add(lng + "," + lat); // Kakao: x,y
+                        }
+                    }
+                }
+            }
 
             UriComponentsBuilder builder = UriComponentsBuilder
                     .fromHttpUrl("https://apis-navi.kakaomobility.com/v1/directions")
@@ -40,20 +62,22 @@ public class RouteController {
                     .queryParam("destination", destXY)
                     .queryParam("priority", "RECOMMEND");
 
-            if (via != null && !via.isBlank()) {
-                builder.queryParam("waypoints", toXY(via));
+            // 3) waypoints는 파이프(|) 구분자 필요 → Spring이 '|'를 허용하지 않으므로 "%7C"로 합침
+            if (!waypointList.isEmpty()) {
+                String waypointsValue = String.join("%7C", waypointList); // 안전하게 인코딩된 파이프
+                builder.queryParam("waypoints", waypointsValue);
             }
 
-            // 여기서 true 넣으면 이미 인코딩된 한글도 안전하게 감
+            // build(true): 파라미터를 추가 인코딩하지 않음(우리가 %7C를 직접 넣었기 때문)
             URI uri = builder.build(true).toUri();
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "KakaoAK " + kakaoKey);
             headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<String> response =
+                    rest.exchange(uri, HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
-            ResponseEntity<String> response = rest.exchange(uri, HttpMethod.GET, entity, String.class);
             return ResponseEntity.status(response.getStatusCode()).body(response.getBody());
 
         } catch (HttpStatusCodeException ex) {
@@ -65,23 +89,14 @@ public class RouteController {
         }
     }
 
-    /**
-     * 입력값이 "37.5665,126.9780" 같이 숫자면 그대로 변환,
-     * 아니면(=한글 주소나 지명) 카카오 지오코드 한번 더 호출해서 첫번째 결과를 좌표로 씀.
-     * 카카오 내비는 "lng,lat" 순서를 요구하니까 마지막에 순서 바꿈.
-     */
+    /** "lat,lng" 또는 한글 주소 → "lng,lat" */
     private String toXY(String src) throws Exception {
         String trimmed = src.trim();
-        // 숫자,숫자 형태면 그대로
+        // 숫자,숫자면 그대로 변환
         if (trimmed.matches("^[0-9.+-]+\\s*,\\s*[0-9.+-]+$")) {
-            String[] parts = trimmed.split(",");
-            double lat = Double.parseDouble(parts[0].trim());
-            double lng = Double.parseDouble(parts[1].trim());
-            return lng + "," + lat; // kakao: x,y = lng,lat
+            return latlngToXY(trimmed);
         }
-
-        // 여기로 왔으면 한글 주소 → 지오코드
-        // (너 geocode 컨트롤러랑 똑같이 카카오 로컬 검색 한 번 더 때리는 로직)
+        // 아니면 키워드 검색 1건 지오코드
         URI uri = UriComponentsBuilder
                 .fromHttpUrl("https://dapi.kakao.com/v2/local/search/keyword.json")
                 .queryParam("query", trimmed)
@@ -110,7 +125,15 @@ public class RouteController {
 
         double lng = Double.parseDouble(doc0.path("x").asText());
         double lat = Double.parseDouble(doc0.path("y").asText());
+        return lng + "," + lat; // Kakao: x,y
+    }
 
+    /** "lat,lng" → "lng,lat" */
+    private String latlngToXY(String latlng) {
+        String[] parts = latlng.split(",");
+        if (parts.length != 2) throw new IllegalArgumentException("좌표 형식은 'lat,lng' 이어야 합니다.");
+        double lat = Double.parseDouble(parts[0].trim());
+        double lng = Double.parseDouble(parts[1].trim());
         return lng + "," + lat;
     }
 }

@@ -88,13 +88,20 @@
 </div>
 
 <script>
-    let map, clusterer, routeLine=null;
+    let map, clusterer;
     let page=0, limit=20, total=0, totalPages=1;
     let userLat=null, userLng=null;
     let userMarker=null, userInfo=null;
-    let currentItems = [];
-    let suspendRefresh = false; // 길찾기 중 idle로 인한 refresh 방지
+    let currentItems = [];               // /api/accident-hotspots 응답 items
+    let suspendRefresh = false;          // 길찾기 중 idle refresh 방지
     let cachedOrigin=null, cachedDest=null;
+
+    /* ====== 경로 렌더 관리(겹침 방지) ====== */
+    let routeLines = [];
+    function clearRoute() {
+      routeLines.forEach(l => l.setMap(null));
+      routeLines = [];
+    }
 
     function initMap(){
       map=new kakao.maps.Map(document.getElementById('map'),{
@@ -110,7 +117,6 @@
       return `${sw.getLng()},${sw.getLat()},${ne.getLng()},${ne.getLat()}`;
     }
 
-    // 안전 fetch
     async function fetchJSON(url){
       const r=await fetch(url,{headers:{Accept:'application/json'}});
       const t=await r.text();
@@ -119,7 +125,6 @@
       return JSON.parse(t);
     }
 
-    // 리스트/마커 렌더 (hover로 말풍선)
     function renderListAndMarkers(data){
       clusterer.clear(); document.getElementById('list').innerHTML='';
       currentItems=data.items||[];
@@ -130,7 +135,7 @@
         const iw=new kakao.maps.InfoWindow({
           content:`<div style="padding:8px;font-size:13px;"><b>${row.name}</b><br/>사고 ${row.accidents} · 사상자 ${row.casualties}${row.year?`<br/>(${row.year}년)`:''}</div>`
         });
-        // ✅ 마우스 올리면 말풍선, 떼면 닫힘
+        // 말풍선: 마우스 올리면 보이고 떼면 닫힘
         kakao.maps.event.addListener(marker,'mouseover',()=>iw.open(map,marker));
         kakao.maps.event.addListener(marker,'mouseout',()=>iw.close());
         markers.push(marker);
@@ -143,10 +148,9 @@
         document.getElementById('list').appendChild(div);
       });
       clusterer.addMarkers(markers);
-      if (userMarker) userMarker.setMap(map); // 내 위치 마커는 클러스터 제외로 유지
+      if (userMarker) userMarker.setMap(map);
     }
 
-    // 페이지네이션(1~5 묶음 + ‹/›)
     function renderPager(){
       const pager=document.getElementById('pager'); pager.innerHTML='';
       const groupSize=5, start=Math.floor(page/groupSize)*groupSize;
@@ -167,7 +171,6 @@
       }
     }
 
-    // 데이터 로드
     async function refresh(){
       const st=document.getElementById('status'); st.textContent='불러오는 중…';
       const params=new URLSearchParams();
@@ -193,22 +196,13 @@
       }
     }
 
-    // ✅ 지오코딩/자동완성 (백엔드가 배열로 줄 때/옛날 포맷 둘 다 지원)
+    // 지오코딩(새/예전 백엔드 모두 호환)
     async function geocodeRaw(query){
       const r=await fetch('/api/geocode?query='+encodeURIComponent(query));
       const j=await r.json();
-
-      // 새 백엔드 형식: [{name, lat, lng, addr}, ...]
       if (Array.isArray(j)) {
-        return j.map(d => ({
-          name: d.name,
-          lat: d.lat,
-          lng: d.lng,
-          addr: d.addr || d.name
-        }));
+        return j.map(d => ({ name:d.name, lat:d.lat, lng:d.lng, addr:d.addr||d.name }));
       }
-
-      // 예전 형식: { data: "카카오 원본 string" }
       const raw = JSON.parse(j.data || '{}');
       const docs = raw.documents || [];
       return docs.map(d => ({
@@ -218,7 +212,6 @@
         addr: d.address_name || (d.road_address && d.road_address.address_name) || ''
       }));
     }
-
     function bindAutocomplete(inputId, ulId, onPick){
       const input=document.getElementById(inputId), ul=document.getElementById(ulId); let t=null;
       input.addEventListener('input', ()=>{
@@ -236,7 +229,6 @@
         },250);
       });
     }
-
     function parseLatLng(text){
       const parts=text.split(',').map(s=>s.trim());
       if(parts.length===2&& !isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[1]))){
@@ -254,17 +246,15 @@
       document.getElementById('dest').value=it.name;
     });
 
-    // 자동완성 선택 안 해도 1순위 결과 자동 사용
     async function resolvePoint(inputId,cached){
       const v=document.getElementById(inputId).value.trim();
-      const ll=parseLatLng(v); if(ll) return ll;     // 위도,경도 직접 입력한 경우
-      if(cached) return cached;                      // 자동완성에서 고른 경우
+      const ll=parseLatLng(v); if(ll) return ll;
+      if(cached) return cached;
       if(!v) return null;
-      const list=await geocodeRaw(v);                // 그냥 한글 주소만 쓴 경우 → 1순위 사용
+      const list=await geocodeRaw(v);
       return list[0]?{lat:list[0].lat,lng:list[0].lng}:null;
     }
 
-    // 내 위치(마커 + hover 말풍선)
     function upsertMyLocationMarker(lat,lng){
       const pos = new kakao.maps.LatLng(lat,lng);
       if (!userMarker){
@@ -279,30 +269,66 @@
       }
     }
 
-    // 길찾기(/api/route 프록시)
     function getCenterLatLng(){ const c=map.getCenter(); return {lat:c.getLat(),lng:c.getLng()}; }
 
-    function detourWaypoint(origin,dest){
-      const R=6371000,d=150;
-      const lat1=origin.lat*Math.PI/180,lng1=origin.lng*Math.PI/180,lat2=dest.lat*Math.PI/180,lng2=dest.lng*Math.PI/180;
-      const brg=Math.atan2(Math.sin(lng2-lng1)*Math.cos(lat2),Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(lng2-lng1));
-      const perp=brg+Math.PI/2;
-      const lat=Math.asin(Math.sin(lat1)*Math.cos(d/R)+Math.cos(lat1)*Math.sin(d/R)*Math.cos(perp));
-      const lng=lng1+Math.atan2(Math.sin(perp)*Math.sin(d/R)*Math.cos(lat1),Math.cos(d/R)-Math.sin(lat1)*Math.sin(lat));
-      return {lat:lat*180/Math.PI,lng:lng*180/Math.PI};
+    /* ====== 우회경유지 산출 유틸 ====== */
+    const R = 6371000;
+    const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+
+    // 안정화된 하버사인 거리(m)
+    function hav(lat1,lng1,lat2,lng2){
+      const dlat=toRad(lat2-lat1), dlng=toRad(lng2-lng1);
+      const s1=Math.sin(dlat/2), s2=Math.sin(dlng/2);
+      const a = s1*s1 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*s2*s2;
+      return 2*R*Math.asin(Math.sqrt(Math.max(0, Math.min(1, a))));
     }
 
-    async function requestRoute(origin,dest,via){
+    function distPointToSegmentMeters(P,A,B){
+      // 평면 근사
+      const ax=A.lng, ay=A.lat, bx=B.lng, by=B.lat, px=P.lng, py=P.lat;
+      const ABx=bx-ax, ABy=by-ay;
+      const APx=px-ax, APy=py-ay;
+      const ab2 = ABx*ABx + ABy*ABy || 1e-9;
+      let t = (APx*ABx + APy*ABy)/ab2; t=Math.max(0,Math.min(1,t));
+      const C = {lng: ax + ABx*t, lat: ay + ABy*t};
+      return hav(P.lat,P.lng,C.lat,C.lng);
+    }
+
+    function offsetPerp(from,to,point,meters){
+      const brg = Math.atan2(
+        Math.sin(toRad(to.lng-from.lng))*Math.cos(toRad(to.lat)),
+        Math.cos(toRad(from.lat))*Math.sin(toRad(to.lat)) -
+        Math.sin(toRad(from.lat))*Math.cos(toRad(to.lat))*Math.cos(toRad(to.lng-from.lng))
+      );
+      const perp = brg + Math.PI/2;
+      const dR = meters/R;
+      const lat1 = toRad(point.lat), lng1 = toRad(point.lng);
+      const lat = Math.asin(Math.sin(lat1)*Math.cos(dR) + Math.cos(lat1)*Math.sin(dR)*Math.cos(perp));
+      const lng = lng1 + Math.atan2(Math.sin(perp)*Math.sin(dR)*Math.cos(lat1), Math.cos(dR)-Math.sin(lat1)*Math.sin(lat));
+      return {lat: toDeg(lat), lng: toDeg(lng)};
+    }
+
+    /* ====== 경로 요청(프록시: /api/route) ====== */
+    async function requestRoute(origin,dest,via=null,vias=[]){
+      // 겹침 방지: 항상 시작 전에 기존 라인 제거
+      clearRoute();
+
       const params=new URLSearchParams();
       params.set('origin',`${origin.lat},${origin.lng}`);
       params.set('dest',`${dest.lat},${dest.lng}`);
       if(via) params.set('via',`${via.lat},${via.lng}`);
+      if (Array.isArray(vias) && vias.length){
+        // 백엔드가 JSON 배열을 받도록 전달
+        params.set('vias', JSON.stringify(vias));
+      }
+
       try{
         suspendRefresh = true;
         const res=await fetch('/api/route?'+params.toString());
         const txt=await res.text();
         if(!res.ok) throw new Error(`Route API failed: ${res.status} ${txt.slice(0,120)}`);
         const data=JSON.parse(txt);
+
         const coords=[];
         const routes=data.routes||[]; const sections=routes[0]?.sections||[];
         sections.forEach(sec=>{
@@ -311,9 +337,10 @@
             for(let i=0;i<v.length;i+=2) coords.push(new kakao.maps.LatLng(v[i+1],v[i]));
           });
         });
-        if(routeLine) routeLine.setMap(null);
+
         if(coords.length){
-          routeLine=new kakao.maps.Polyline({map, path:coords, strokeWeight:5, strokeColor:'#0a4d9e', strokeOpacity:0.9});
+          const line=new kakao.maps.Polyline({map, path:coords, strokeWeight:5, strokeColor:'#0a4d9e', strokeOpacity:0.9});
+          routeLines.push(line);
           const bounds=new kakao.maps.LatLngBounds(); coords.forEach(c=>bounds.extend(c)); map.setBounds(bounds);
         }else{
           alert('경로를 파싱할 수 없습니다. (응답 구조를 콘솔에서 확인)');
@@ -326,7 +353,7 @@
       }
     }
 
-    // 이벤트 바인딩
+    /* ====== 이벤트 바인딩 ====== */
     window.addEventListener('load', ()=>{
       initMap(); refresh();
 
@@ -341,27 +368,55 @@
           upsertMyLocationMarker(userLat,userLng);
           map.panTo(new kakao.maps.LatLng(userLat,userLng));
           document.getElementById('order').value='distance'; page=0; refresh();
-        },()=>alert('위를 가져오지 못했습니다.'),{enableHighAccuracy:true,timeout:5000});
+        },()=>alert('위치를 가져오지 못했습니다.'),{enableHighAccuracy:true,timeout:5000});
       };
+
       document.getElementById('btn-center').onclick=()=>{
         if(userLat==null||userLng==null) return alert('먼저 "내 위치 기준"을 눌러 주세요.');
         upsertMyLocationMarker(userLat,userLng);
         map.panTo(new kakao.maps.LatLng(userLat,userLng));
       };
 
-      // ✅ 길찾기: 자동완성 선택/한글 입력/위경도 전부 지원
+      // 일반 길찾기(사고구역 통과 가능.)
       document.getElementById('btn-route').onclick=async ()=>{
         const origin = await resolvePoint('origin', cachedOrigin) || getCenterLatLng();
         const dest   = await resolvePoint('dest',   cachedDest);
         if(!dest) return alert('도착지를 입력(지명/주소 선택) 또는 "위도,경도"로 입력하세요.');
-        await requestRoute(origin,dest,null);
+        await requestRoute(origin,dest,null,[]);   // vias 비움
       };
-      document.getElementById('btn-detour').onclick=async ()=>{
+
+      // 우회 제안(사고 다발 구역 회피 경유지 자동 생성)
+      document.getElementById('btn-detour').onclick = async ()=>{
         const origin = await resolvePoint('origin', cachedOrigin) || getCenterLatLng();
         const dest   = await resolvePoint('dest',   cachedDest);
-        if(!dest) return alert('도착지를 입력해 주세요.');
-        const via = detourWaypoint(origin,dest);
-        await requestRoute(origin,dest,via);
+        if(!dest){ alert('도착지를 입력해 주세요.'); return; }
+
+        const A = {lat:origin.lat, lng:origin.lng};
+        const B = {lat:dest.lat,   lng:dest.lng};
+
+        const NEAR_TH = 180;   // 선분 근처 위험 판정(m)
+        const SHIFT   = 120;  // 수직 이동 거리(m)
+
+        const candidates = (currentItems||[])
+          .map(h => ({lat:h.lat, lng:h.lng, w:(h.accidents||1)}))
+          .filter(p => distPointToSegmentMeters(p, A, B) <= NEAR_TH);
+
+        if(!candidates.length){
+          await requestRoute(origin, dest, null, []); // 위험 없으면 일반 경로
+          return;
+        }
+
+        const rawVias = candidates.map(p => offsetPerp(A, B, p, SHIFT));
+
+        // 최대 3개, 서로 120m 이상 떨어진 포인트만 선별
+        rawVias.sort((p,q)=> hav(A.lat,A.lng,q.lat,q.lng) - hav(A.lat,A.lng,p.lat,p.lng));
+        const picked = [];
+        for(const v of rawVias){
+          if (picked.length>=3) break;
+          if (picked.every(x => hav(x.lat,x.lng,v.lat,v.lng) > 120)) picked.push(v);
+        }
+
+        await requestRoute(origin, dest, null, picked);
       };
     });
 </script>
