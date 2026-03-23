@@ -1,29 +1,28 @@
-package com.example.demo.hotspot;
+package com.example.demo.restaurant;
 
-import com.example.demo.hotspot.dto.HotspotListDto;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import com.example.demo.restaurant.dto.RestaurantListDto;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
 @RestController
-@RequestMapping(value = "/api/accident-hotspots", produces = MediaType.APPLICATION_JSON_VALUE)
-public class HotspotController {
-    private final HotspotService service;
-    public HotspotController(HotspotService service) { this.service = service; }
+@RequestMapping(value = "/api/restaurants", produces = MediaType.APPLICATION_JSON_VALUE)
+public class RestaurantController {
+    private final RestaurantService service;
+    public RestaurantController(RestaurantService service) { this.service = service; }
 
     @GetMapping("/ping")
     public Map<String, String> ping() { return Map.of("status", "ok"); }
 
     @GetMapping
-    public ResponseEntity<?> getHotspots(
+    public ResponseEntity<?> getRestaurants(
             @RequestParam("bbox") String bbox,
-            @RequestParam(value = "year", required = false) Integer year,
-            @RequestParam(value = "order", defaultValue = "accidents") String order,
+            @RequestParam(value = "order", defaultValue = "distance") String order,
             @RequestParam(value = "limit", defaultValue = "20") Integer limit,
             @RequestParam(value = "page", defaultValue = "0") Integer page,
             @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "category", required = false) String category,
             @RequestParam(value = "lat", required = false) Double lat,
             @RequestParam(value = "lng", required = false) Double lng
     ) {
@@ -54,9 +53,9 @@ public class HotspotController {
                 ));
             }
 
-            HotspotListDto dto = service.searchInBBox(
+            RestaurantListDto dto = service.searchInBBox(
                     west, south, east, north,
-                    year, order, limit, page, q, lat, lng
+                    order, limit, page, q, category, lat, lng
             );
             return ResponseEntity.ok(dto);
 

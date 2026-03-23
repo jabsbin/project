@@ -2,88 +2,98 @@
 <html lang="ko">
 <head>
     <meta charset="utf-8" />
-    <title>자전거 사고 다발지역</title>
+    <title>청주 맛집 지도</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <style>
         :root { --pri:#0a4d9e; --ink:#111; --muted:#666; --line:#eee; }
         * { box-sizing: border-box; }
         body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink); }
-        header { background:var(--pri); color:#fff; padding:16px 20px; font-size:20px; font-weight:700; display:flex; align-items:center; gap:12px;}
+        header { background:var(--pri); color:#fff; padding:16px 20px; font-size:20px; font-weight:700; }
         .toolbar { display:flex; gap:8px; padding:10px 12px; align-items:center; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-        .toolbar select, .toolbar input, .toolbar button { padding:6px 10px; font-size:14px; border:1px solid #ddd; border-radius:8px; background:#fff; }
+        .toolbar select, .toolbar input, .toolbar button {
+          padding:6px 10px; font-size:14px; border:1px solid #ddd; border-radius:8px; background:#fff;
+        }
         #map { width:100%; height:46vh; }
+
         .panel { display:flex; gap:16px; padding:10px 12px; }
         .left { flex:1; display:flex; flex-direction:column; }
+
         .route { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
         .route input { width:240px; }
+
         .suggest { list-style:none; margin:4px 0 0; padding:0; max-height:140px; overflow:auto; }
         .suggest li { padding:6px 8px; border:1px solid #eee; border-radius:8px; margin:4px 0; cursor:pointer; background:#fff; }
+
         .list-wrap { flex:1; display:flex; flex-direction:column; max-height:44vh; }
         .list { flex:1; overflow:auto; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+
         .item { padding:8px 6px; border-bottom:1px dashed #e6e6e6; font-size:14px; cursor:pointer; }
         .item:hover { background:#fafafa; }
+
         .pager-row { display:flex; gap:6px; align-items:center; justify-content:center; padding:8px 0; }
-        .pager-row button { min-width:32px; text-align:center; padding:6px 8px; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; }
+        .pager-row button {
+          min-width:32px; text-align:center; padding:6px 8px;
+          border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer;
+        }
         .pager-row .active { background:#0a4d9e; color:#fff; border-color:#0a4d9e; }
-        .badge { display:inline-block; padding:2px 6px; border-radius:6px; font-size:12px; margin-left:6px; }
-        .badge.red { background:#fdecea; color:#c62828; }
-        .badge.orange { background:#fff3e0; color:#ef6c00; }
-        .badge.green { background:#e8f5e9; color:#2e7d32; }
+
         .muted { color:var(--muted); }
+        .pill { display:inline-block; padding:2px 6px; border-radius:999px; font-size:12px; border:1px solid #ddd; margin-left:6px; }
     </style>
 
-    <!-- Kakao 지도 SDK -->
+    <!-- 카카오 지도 SDK -->
     <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=ec7a521b62d776eb9f9d4089423e63da&libraries=clusterer"></script>
 </head>
 <body>
-<header>🚴‍♀️ 자전거 사고 다발지역</header>
 
-<!-- 필터/검색/상태 -->
+<header>🍜 청주 맛집 지도</header>
+
 <div class="toolbar">
-    <label>연도
-        <select id="year">
-            <option value="">전체</option>
-            <option>2025</option><option>2024</option><option>2023</option>
-            <option>2022</option><option>2021</option><option>2020</option>
-            <option>2019</option><option>2018</option><option>2017</option>
-        </select>
-    </label>
     <label>정렬
         <select id="order">
-            <option value="accidents" selected>사고건수</option>
-            <option value="casualties">사상자수</option>
-            <option value="distance">내 위치와 거리</option>
+            <option value="distance" selected>내 위치와 거리</option>
+            <option value="name">가나다순</option>
         </select>
     </label>
-    <label>검색
-        <input id="q" type="search" placeholder="지역, 장소명…" style="width:180px;" />
+
+    <label>카테고리
+        <input id="category" placeholder="예) 한식 / 카페 / 중식" style="width:160px;" />
     </label>
+
+    <label>검색
+        <input id="q" type="search" placeholder="가게명…" style="width:180px;" />
+    </label>
+
     <label>표시개수
         <input id="limit" type="number" value="20" min="1" max="500" style="width:80px" />
     </label>
+
     <button id="btn-near">내 위치 기준</button>
     <button id="btn-center">내 위치로</button>
     <button id="btn-refresh">불러오기</button>
+
     <span id="status" class="muted" style="margin-left:auto;"></span>
 </div>
 
 <div id="map"></div>
 
-<!-- 길찾기/리스트/페이지네이션 -->
 <div class="panel">
     <div class="left">
+
         <div class="route">
-            <input id="origin" placeholder="출발지 (주소/장소 또는 위도,경도)" />
-            <input id="dest" placeholder="도착지 (주소/장소 또는 위도,경도)" />
+            <input id="origin" placeholder="출발지 (주소 또는 위도,경도)" />
+            <input id="dest" placeholder="도착지 (주소 또는 위도,경도)" />
             <button id="btn-route">길찾기</button>
-            <button id="btn-detour">우회 제안</button>
             <ul id="suggest-origin" class="suggest"></ul>
             <ul id="suggest-dest" class="suggest"></ul>
         </div>
+
         <div class="list-wrap">
             <div class="list" id="list"></div>
             <div class="pager-row" id="pager"></div>
         </div>
+
     </div>
 </div>
 
@@ -92,333 +102,234 @@
     let page=0, limit=20, total=0, totalPages=1;
     let userLat=null, userLng=null;
     let userMarker=null, userInfo=null;
-    let currentItems = [];               // /api/accident-hotspots 응답 items
-    let suspendRefresh = false;          // 길찾기 중 idle refresh 방지
+    let currentItems = [];
+    let suspendRefresh=false;
     let cachedOrigin=null, cachedDest=null;
 
-    /* ====== 경로 렌더 관리(겹침 방지) ====== */
-    let routeLines = [];
-    function clearRoute() {
-      routeLines.forEach(l => l.setMap(null));
-      routeLines = [];
+    let routeLines=[];
+
+    function clearRoute(){
+      routeLines.forEach(l=>l.setMap(null));
+      routeLines=[];
     }
 
     function initMap(){
       map=new kakao.maps.Map(document.getElementById('map'),{
-        center:new kakao.maps.LatLng(37.5665,126.9780), level:7
+        center:new kakao.maps.LatLng(36.635,127.491),
+        level:7
       });
-      clusterer=new kakao.maps.MarkerClusterer({map, averageCenter:true, minLevel:6});
-      kakao.maps.event.addListener(map, 'idle', () => {
-        if (!suspendRefresh) { page=0; refresh(); }
+
+      clusterer=new kakao.maps.MarkerClusterer({
+        map, averageCenter:true, minLevel:6
+      });
+
+      kakao.maps.event.addListener(map,'idle',()=>{
+        if(!suspendRefresh){
+          page=0;
+          refresh();
+        }
       });
     }
+
     function currentBBox(){
-      const b=map.getBounds(), sw=b.getSouthWest(), ne=b.getNorthEast();
+      const b=map.getBounds();
+      const sw=b.getSouthWest();
+      const ne=b.getNorthEast();
       return `${sw.getLng()},${sw.getLat()},${ne.getLng()},${ne.getLat()}`;
     }
 
     async function fetchJSON(url){
       const r=await fetch(url,{headers:{Accept:'application/json'}});
       const t=await r.text();
-      if(!r.ok) throw new Error(`HTTP ${r.status} ${t.slice(0,160)}`);
-      if(t.trim().startsWith('<')) throw new Error('서버가 HTML을 반환했습니다.');
+      if(!r.ok) throw new Error(`HTTP ${r.status} ${t.slice(0,120)}`);
       return JSON.parse(t);
     }
 
     function renderListAndMarkers(data){
-      clusterer.clear(); document.getElementById('list').innerHTML='';
+      clusterer.clear();
+      document.getElementById('list').innerHTML='';
       currentItems=data.items||[];
       const markers=[];
-      currentItems.forEach((row)=>{
+
+      currentItems.forEach(row=>{
         const pos=new kakao.maps.LatLng(row.lat,row.lng);
         const marker=new kakao.maps.Marker({position:pos});
-        const iw=new kakao.maps.InfoWindow({
-          content:`<div style="padding:8px;font-size:13px;"><b>${row.name}</b><br/>사고 ${row.accidents} · 사상자 ${row.casualties}${row.year?`<br/>(${row.year}년)`:''}</div>`
-        });
-        // 말풍선: 마우스 올리면 보이고 떼면 닫힘
-        kakao.maps.event.addListener(marker,'mouseover',()=>iw.open(map,marker));
-        kakao.maps.event.addListener(marker,'mouseout',()=>iw.close());
         markers.push(marker);
 
-        const div=document.createElement('div'); div.className='item';
-        const badge = row.accidents>=10?'red':row.accidents>=4?'orange':'green';
-        div.innerHTML=`[${row.year??'-'}] ${row.name} <span class="badge ${badge}">${row.accidents??0}건</span>`;
-        div.onmouseenter=()=>{ map.panTo(pos); iw.open(map,marker); };
-        div.onmouseleave=()=>iw.close();
+        const dist=row.distance!=null?` · ${(row.distance/1000).toFixed(2)}km`:'';
+
+        const iw=new kakao.maps.InfoWindow({
+          content:`<div style="padding:8px;font-size:13px;">
+            <b>${row.name}</b>
+            ${row.category?` <span class="pill">${row.category}</span>`:''}
+            <br>${row.address||''}${dist}
+            ${row.phone?`<br>☎ ${row.phone}`:''}
+          </div>`
+        });
+
+        kakao.maps.event.addListener(marker,'mouseover',()=>iw.open(map,marker));
+        kakao.maps.event.addListener(marker,'mouseout',()=>iw.close());
+
+        const div=document.createElement('div');
+        div.className='item';
+        div.innerHTML=`
+          ${row.name}
+          ${row.category?`<span class="pill">${row.category}</span>`:''}
+          <div class="muted" style="font-size:12px;margin-top:2px;">
+            ${row.address||''}
+            ${dist}
+          </div>
+        `;
+
+        div.onclick=()=>{
+          map.panTo(pos);
+          document.getElementById('dest').value=`${row.lat},${row.lng}`;
+          cachedDest={lat:row.lat,lng:row.lng};
+        };
+
         document.getElementById('list').appendChild(div);
       });
+
       clusterer.addMarkers(markers);
-      if (userMarker) userMarker.setMap(map);
+      if(userMarker) userMarker.setMap(map);
     }
 
     function renderPager(){
-      const pager=document.getElementById('pager'); pager.innerHTML='';
-      const groupSize=5, start=Math.floor(page/groupSize)*groupSize;
+      const pager=document.getElementById('pager');
+      pager.innerHTML='';
+      const groupSize=5;
+      const start=Math.floor(page/groupSize)*groupSize;
       const end=Math.min(start+groupSize,totalPages);
 
       if(start>0){
-        const prev=document.createElement('button'); prev.textContent='‹';
-        prev.onclick=()=>{ page=start-1; refresh(); }; pager.appendChild(prev);
+        const prev=document.createElement('button');
+        prev.textContent='‹';
+        prev.onclick=()=>{page=start-1;refresh();};
+        pager.appendChild(prev);
       }
+
       for(let i=start;i<end;i++){
-        const b=document.createElement('button'); b.textContent=i+1;
+        const b=document.createElement('button');
+        b.textContent=i+1;
         if(i===page) b.classList.add('active');
-        b.onclick=()=>{ page=i; refresh(); }; pager.appendChild(b);
+        b.onclick=()=>{page=i;refresh();};
+        pager.appendChild(b);
       }
+
       if(end<totalPages){
-        const next=document.createElement('button'); next.textContent='›';
-        next.onclick=()=>{ page=end; refresh(); }; pager.appendChild(next);
+        const next=document.createElement('button');
+        next.textContent='›';
+        next.onclick=()=>{page=end;refresh();};
+        pager.appendChild(next);
       }
     }
 
     async function refresh(){
-      const st=document.getElementById('status'); st.textContent='불러오는 중…';
+      const st=document.getElementById('status');
+      st.textContent='불러오는 중…';
+
       const params=new URLSearchParams();
       params.set('bbox',currentBBox());
-      limit = parseInt(document.getElementById('limit').value||'20',10);
-      params.set('limit', String(limit));
-      params.set('page', String(page));
 
-      const year=document.getElementById('year').value; if(year) params.set('year',year);
-      const order=document.getElementById('order').value; if(order) params.set('order',order);
-      const q=document.getElementById('q').value.trim(); if(q) params.set('q',q);
-      if(order==='distance'&&userLat!=null&&userLng!=null){ params.set('lat',userLat); params.set('lng',userLng); }
+      limit=parseInt(document.getElementById('limit').value||'20',10);
+      params.set('limit',limit);
+      params.set('page',page);
+
+      const order=document.getElementById('order').value;
+      const q=document.getElementById('q').value.trim();
+      const category=document.getElementById('category').value.trim();
+
+      if(order) params.set('order',order);
+      if(q) params.set('q',q);
+      if(category) params.set('category',category);
+
+      if(order==='distance'&&userLat&&userLng){
+        params.set('lat',userLat);
+        params.set('lng',userLng);
+      }
 
       try{
-        const data=await fetchJSON('/api/accident-hotspots?'+params.toString());
-        total=data.total||0; totalPages=Math.max(1,Math.ceil(total/limit));
-        st.textContent=`총 ${total}건 · ${page+1}/${totalPages}`;
-        renderListAndMarkers(data); renderPager();
+        const data=await fetchJSON('/api/restaurants?'+params.toString());
+        total=data.total||0;
+        totalPages=Math.max(1,Math.ceil(total/limit));
+        st.textContent=`총 ${total}곳 · ${page+1}/${totalPages}`;
+        renderListAndMarkers(data);
+        renderPager();
       }catch(e){
         st.textContent='로드 실패: '+e.message;
-        document.getElementById('list').innerHTML='';
-        clusterer.clear();
       }
     }
 
-    // 지오코딩(새/예전 백엔드 모두 호환)
-    async function geocodeRaw(query){
-      const r=await fetch('/api/geocode?query='+encodeURIComponent(query));
-      const j=await r.json();
-      if (Array.isArray(j)) {
-        return j.map(d => ({ name:d.name, lat:d.lat, lng:d.lng, addr:d.addr||d.name }));
-      }
-      const raw = JSON.parse(j.data || '{}');
-      const docs = raw.documents || [];
-      return docs.map(d => ({
-        name: d.place_name || d.address_name,
-        lat: parseFloat(d.y),
-        lng: parseFloat(d.x),
-        addr: d.address_name || (d.road_address && d.road_address.address_name) || ''
-      }));
-    }
-    function bindAutocomplete(inputId, ulId, onPick){
-      const input=document.getElementById(inputId), ul=document.getElementById(ulId); let t=null;
-      input.addEventListener('input', ()=>{
-        clearTimeout(t); const q=input.value.trim(); if(!q){ul.innerHTML='';return;}
-        t=setTimeout(async ()=>{
-          try{
-            const items=await geocodeRaw(q); ul.innerHTML='';
-            items.forEach(it=>{
-              const li=document.createElement('li');
-              li.innerHTML=`<b>${it.name}</b><br><span class="muted">${it.addr}</span>`;
-              li.onclick=()=>{ onPick(it); ul.innerHTML=''; };
-              ul.appendChild(li);
-            });
-          }catch{ul.innerHTML='';}
-        },250);
-      });
-    }
-    function parseLatLng(text){
-      const parts=text.split(',').map(s=>s.trim());
-      if(parts.length===2&& !isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[1]))){
-        return {lat:parseFloat(parts[0]), lng:parseFloat(parts[1])};
-      }
-      return null;
-    }
+    window.addEventListener('load',()=>{
+      initMap();
+      refresh();
 
-    bindAutocomplete('origin','suggest-origin',it=>{
-      cachedOrigin={lat:it.lat,lng:it.lng};
-      document.getElementById('origin').value=it.name;
-    });
-    bindAutocomplete('dest','suggest-dest',it=>{
-      cachedDest={lat:it.lat,lng:it.lng};
-      document.getElementById('dest').value=it.name;
-    });
+      document.getElementById('btn-refresh').onclick=()=>{page=0;refresh();};
+      document.getElementById('order').onchange=()=>{page=0;refresh();};
+      document.getElementById('q').oninput=()=>{page=0;refresh();};
+      document.getElementById('category').oninput=()=>{page=0;refresh();};
 
-    async function resolvePoint(inputId,cached){
-      const v=document.getElementById(inputId).value.trim();
-      const ll=parseLatLng(v); if(ll) return ll;
-      if(cached) return cached;
-      if(!v) return null;
-      const list=await geocodeRaw(v);
-      return list[0]?{lat:list[0].lat,lng:list[0].lng}:null;
-    }
+      document.getElementById('btn-near').onclick=()=>{
+        navigator.geolocation.getCurrentPosition(pos=>{
+          userLat=pos.coords.latitude;
+          userLng=pos.coords.longitude;
+          const p=new kakao.maps.LatLng(userLat,userLng);
+          map.panTo(p);
 
-    function upsertMyLocationMarker(lat,lng){
-      const pos = new kakao.maps.LatLng(lat,lng);
-      if (!userMarker){
-        userMarker = new kakao.maps.Marker({ position: pos, zIndex: 9999 });
-        userMarker.setMap(map);
-        userInfo = new kakao.maps.InfoWindow({ content:`<div style="padding:6px 8px;font-size:12px;">내 위치</div>` });
-        kakao.maps.event.addListener(userMarker,'mouseover',()=>userInfo.open(map,userMarker));
-        kakao.maps.event.addListener(userMarker,'mouseout',()=>userInfo.close());
-      } else {
-        userMarker.setPosition(pos);
-        userMarker.setMap(map);
-      }
-    }
+          if(!userMarker){
+            userMarker=new kakao.maps.Marker({position:p});
+            userMarker.setMap(map);
+          }else{
+            userMarker.setPosition(p);
+          }
 
-    function getCenterLatLng(){ const c=map.getCenter(); return {lat:c.getLat(),lng:c.getLng()}; }
+          document.getElementById('order').value='distance';
+          page=0;
+          refresh();
+        });
+      };
 
-    /* ====== 우회경유지 산출 유틸 ====== */
-    const R = 6371000;
-    const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+      document.getElementById('btn-route').onclick=async()=>{
+        const originVal=document.getElementById('origin').value.trim();
+        const destVal=document.getElementById('dest').value.trim();
+        if(!destVal) return alert('도착지를 입력하세요.');
 
-    // 안정화된 하버사인 거리(m)
-    function hav(lat1,lng1,lat2,lng2){
-      const dlat=toRad(lat2-lat1), dlng=toRad(lng2-lng1);
-      const s1=Math.sin(dlat/2), s2=Math.sin(dlng/2);
-      const a = s1*s1 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*s2*s2;
-      return 2*R*Math.asin(Math.sqrt(Math.max(0, Math.min(1, a))));
-    }
+        clearRoute();
 
-    function distPointToSegmentMeters(P,A,B){
-      // 평면 근사
-      const ax=A.lng, ay=A.lat, bx=B.lng, by=B.lat, px=P.lng, py=P.lat;
-      const ABx=bx-ax, ABy=by-ay;
-      const APx=px-ax, APy=py-ay;
-      const ab2 = ABx*ABx + ABy*ABy || 1e-9;
-      let t = (APx*ABx + APy*ABy)/ab2; t=Math.max(0,Math.min(1,t));
-      const C = {lng: ax + ABx*t, lat: ay + ABy*t};
-      return hav(P.lat,P.lng,C.lat,C.lng);
-    }
+        const params=new URLSearchParams();
+        params.set('origin',originVal||`${map.getCenter().getLat()},${map.getCenter().getLng()}`);
+        params.set('dest',destVal);
 
-    function offsetPerp(from,to,point,meters){
-      const brg = Math.atan2(
-        Math.sin(toRad(to.lng-from.lng))*Math.cos(toRad(to.lat)),
-        Math.cos(toRad(from.lat))*Math.sin(toRad(to.lat)) -
-        Math.sin(toRad(from.lat))*Math.cos(toRad(to.lat))*Math.cos(toRad(to.lng-from.lng))
-      );
-      const perp = brg + Math.PI/2;
-      const dR = meters/R;
-      const lat1 = toRad(point.lat), lng1 = toRad(point.lng);
-      const lat = Math.asin(Math.sin(lat1)*Math.cos(dR) + Math.cos(lat1)*Math.sin(dR)*Math.cos(perp));
-      const lng = lng1 + Math.atan2(Math.sin(perp)*Math.sin(dR)*Math.cos(lat1), Math.cos(dR)-Math.sin(lat1)*Math.sin(lat));
-      return {lat: toDeg(lat), lng: toDeg(lng)};
-    }
-
-    /* ====== 경로 요청(프록시: /api/route) ====== */
-    async function requestRoute(origin,dest,via=null,vias=[]){
-      // 겹침 방지: 항상 시작 전에 기존 라인 제거
-      clearRoute();
-
-      const params=new URLSearchParams();
-      params.set('origin',`${origin.lat},${origin.lng}`);
-      params.set('dest',`${dest.lat},${dest.lng}`);
-      if(via) params.set('via',`${via.lat},${via.lng}`);
-      if (Array.isArray(vias) && vias.length){
-        // 백엔드가 JSON 배열을 받도록 전달
-        params.set('vias', JSON.stringify(vias));
-      }
-
-      try{
-        suspendRefresh = true;
+        suspendRefresh=true;
         const res=await fetch('/api/route?'+params.toString());
-        const txt=await res.text();
-        if(!res.ok) throw new Error(`Route API failed: ${res.status} ${txt.slice(0,120)}`);
-        const data=JSON.parse(txt);
+        const data=await res.json();
+        suspendRefresh=false;
 
         const coords=[];
-        const routes=data.routes||[]; const sections=routes[0]?.sections||[];
+        const routes=data.routes||[];
+        const sections=routes[0]?.sections||[];
+
         sections.forEach(sec=>{
           (sec.roads||[]).forEach(r=>{
-            const v=r.vertexes||r.vertices||[];
-            for(let i=0;i<v.length;i+=2) coords.push(new kakao.maps.LatLng(v[i+1],v[i]));
+            const v=r.vertexes||[];
+            for(let i=0;i<v.length;i+=2){
+              coords.push(new kakao.maps.LatLng(v[i+1],v[i]));
+            }
           });
         });
 
         if(coords.length){
-          const line=new kakao.maps.Polyline({map, path:coords, strokeWeight:5, strokeColor:'#0a4d9e', strokeOpacity:0.9});
+          const line=new kakao.maps.Polyline({
+            map, path:coords,
+            strokeWeight:5,
+            strokeColor:'#0a4d9e',
+            strokeOpacity:0.9
+          });
           routeLines.push(line);
-          const bounds=new kakao.maps.LatLngBounds(); coords.forEach(c=>bounds.extend(c)); map.setBounds(bounds);
-        }else{
-          alert('경로를 파싱할 수 없습니다. (응답 구조를 콘솔에서 확인)');
-          console.log('route resp:', data);
         }
-      }catch(e){
-        console.error(e); alert('길찾기 실패: '+e.message);
-      }finally{
-        setTimeout(()=>{ suspendRefresh=false; }, 600);
-      }
-    }
-
-    /* ====== 이벤트 바인딩 ====== */
-    window.addEventListener('load', ()=>{
-      initMap(); refresh();
-
-      document.getElementById('btn-refresh').onclick=()=>{ page=0; refresh(); };
-      ['year','order'].forEach(id=>document.getElementById(id).onchange=()=>{ page=0; refresh(); });
-      document.getElementById('q').oninput=()=>{ page=0; refresh(); };
-
-      document.getElementById('btn-near').onclick=()=>{
-        if(!navigator.geolocation) return alert('위치 권한 필요');
-        navigator.geolocation.getCurrentPosition(pos=>{
-          userLat=pos.coords.latitude; userLng=pos.coords.longitude;
-          upsertMyLocationMarker(userLat,userLng);
-          map.panTo(new kakao.maps.LatLng(userLat,userLng));
-          document.getElementById('order').value='distance'; page=0; refresh();
-        },()=>alert('위치를 가져오지 못했습니다.'),{enableHighAccuracy:true,timeout:5000});
-      };
-
-      document.getElementById('btn-center').onclick=()=>{
-        if(userLat==null||userLng==null) return alert('먼저 "내 위치 기준"을 눌러 주세요.');
-        upsertMyLocationMarker(userLat,userLng);
-        map.panTo(new kakao.maps.LatLng(userLat,userLng));
-      };
-
-      // 일반 길찾기(사고구역 통과 가능.)
-      document.getElementById('btn-route').onclick=async ()=>{
-        const origin = await resolvePoint('origin', cachedOrigin) || getCenterLatLng();
-        const dest   = await resolvePoint('dest',   cachedDest);
-        if(!dest) return alert('도착지를 입력(지명/주소 선택) 또는 "위도,경도"로 입력하세요.');
-        await requestRoute(origin,dest,null,[]);   // vias 비움
-      };
-
-      // 우회 제안(사고 다발 구역 회피 경유지 자동 생성)
-      document.getElementById('btn-detour').onclick = async ()=>{
-        const origin = await resolvePoint('origin', cachedOrigin) || getCenterLatLng();
-        const dest   = await resolvePoint('dest',   cachedDest);
-        if(!dest){ alert('도착지를 입력해 주세요.'); return; }
-
-        const A = {lat:origin.lat, lng:origin.lng};
-        const B = {lat:dest.lat,   lng:dest.lng};
-
-        const NEAR_TH = 180;   // 선분 근처 위험 판정(m)
-        const SHIFT   = 120;  // 수직 이동 거리(m)
-
-        const candidates = (currentItems||[])
-          .map(h => ({lat:h.lat, lng:h.lng, w:(h.accidents||1)}))
-          .filter(p => distPointToSegmentMeters(p, A, B) <= NEAR_TH);
-
-        if(!candidates.length){
-          await requestRoute(origin, dest, null, []); // 위험 없으면 일반 경로
-          return;
-        }
-
-        const rawVias = candidates.map(p => offsetPerp(A, B, p, SHIFT));
-
-        // 최대 3개, 서로 120m 이상 떨어진 포인트만 선별
-        rawVias.sort((p,q)=> hav(A.lat,A.lng,q.lat,q.lng) - hav(A.lat,A.lng,p.lat,p.lng));
-        const picked = [];
-        for(const v of rawVias){
-          if (picked.length>=3) break;
-          if (picked.every(x => hav(x.lat,x.lng,v.lat,v.lng) > 120)) picked.push(v);
-        }
-
-        await requestRoute(origin, dest, null, picked);
       };
     });
 </script>
+
 </body>
 </html>
